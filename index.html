@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1c1f28" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Yojan Studio Custom Soundboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #1c1f28;
+      --accent: #64d2ff;
+      --text: #f5f5f7;
+      --muted: rgba(235, 235, 245, 0.62);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      background-color: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      overflow-x: hidden;
+    }
+    #uploadBgCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .upload-scrim {
+      position: fixed;
+      inset: 0;
+      background: rgba(16, 19, 27, 0.70);
+      z-index: 1;
+      pointer-events: none;
+    }
+    body {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)) 16px;
+    }
+    .wrap {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 390px;
+    }
+    .card {
+      background: rgba(38, 42, 54, 0.46);
+      backdrop-filter: blur(32px) saturate(185%);
+      -webkit-backdrop-filter: blur(32px) saturate(185%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 26px;
+      padding: 24px 20px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 24px 48px rgba(0, 0, 0, 0.42);
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    .head-wrap {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--text);
+      line-height: 1.25;
+    }
+    .sub {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--muted);
+    }
+    .conn-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+      padding: 4px 11px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: default;
+    }
+    .conn-bar.retryable {
+      cursor: pointer;
+    }
+    .conn-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ffd60a;
+      flex-shrink: 0;
+    }
+    .conn-bar.connected {
+      color: #30d158;
+      border-color: rgba(48, 209, 88, 0.35);
+      background: rgba(48, 209, 88, 0.12);
+    }
+    .conn-bar.connected .conn-dot {
+      background: #30d158;
+      box-shadow: 0 0 6px rgba(48, 209, 88, 0.7);
+    }
+    .conn-bar.error {
+      color: #ff6961;
+      border-color: rgba(255, 69, 58, 0.4);
+      background: rgba(255, 69, 58, 0.12);
+    }
+    .conn-bar.error .conn-dot {
+      background: #ff453a;
+    }
+    .drop-zone {
+      display: block;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
+      border-radius: 16px;
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.12s ease, background 0.15s ease;
+    }
+    .drop-zone:active {
+      transform: scale(0.98);
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .drop-title {
+      font-size: 0.96rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .queue {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .queue.has-files { display: flex; }
+    .q-item {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 13px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .q-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.8rem; }
+    .q-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+    .q-status { font-size: 0.7rem; font-weight: 600; flex-shrink: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .q-status.ok { color: #30d158; }
+    .q-status.err { color: #ff453a; }
+    .bar-bg {
+      height: 4px;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.14);
+      overflow: hidden;
+    }
+    .bar-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 99px; transition: width 0.12s linear; }
+    .btn {
+      width: 100%;
+      border-radius: 14px;
+      padding: 13px;
+      font-family: inherit;
+      font-size: 0.92rem;
+      font-weight: 600;
+      background: rgba(100, 210, 255, 0.24);
+      border: 1px solid rgba(100, 210, 255, 0.45);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      transition: transform 0.1s ease, background 0.15s ease;
+    }
+    .btn:active:not(:disabled) {
+      transform: scale(0.98);
+      background: rgba(100, 210, 255, 0.36);
+    }
+    .btn:disabled {
+      opacity: 0.42;
+      border-color: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+    .sr-file-input {
+      position: fixed;
+      top: -9999px;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="uploadBgCanvas"></canvas>
+  <div class="upload-scrim"></div>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="head-wrap">
+        <h1>Yojan Studio Custom Soundboard</h1>
+        <p class="sub">Send Audio / Video</p>
+        <div id="connBar" class="conn-bar">
+          <span class="conn-dot"></span>
+          <span id="connText">Connecting to soundboard...</span>
+        </div>
+      </div>
+
+      <label for="fileInput" class="drop-zone">
+        <span class="drop-title">Choose File</span>
+      </label>
+      <input type="file" id="fileInput" class="sr-file-input" accept="audio/*,video/*" multiple />
+
+      <div id="queue" class="queue"></div>
+
+      <button type="button" id="sendBtn" class="btn" disabled>Send</button>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // LIVE HOST-SYNCED RGB BARS & BIG GLOWING DISCO PARTICLES
+    // =========================================================================
+    const bgCanvas = document.getElementById('uploadBgCanvas');
+    const bgCtx = bgCanvas.getContext('2d');
+    const BAR_COUNT = 20;
+    const smoothBars = new Float32Array(BAR_COUNT);
+    const targetBars = new Float32Array(BAR_COUNT);
+    const particles = [];
+    let hostPlaying = false;
+    let hostBass = 0;
+    let smoothBass = 0;
+    let prevBass = 0;
+    let hostHue = 200;
+    let lastBeatRx = 0;
+
+    function syncBgSize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(1, Math.round(window.innerWidth * dpr));
+      const h = Math.max(1, Math.round(window.innerHeight * dpr));
+      if (bgCanvas.width !== w || bgCanvas.height !== h) {
+        bgCanvas.width = w;
+        bgCanvas.height = h;
+      }
+      return dpr;
+    }
+
+    function spawnBigParticle(w, h, dpr, baseHue, burst) {
+      if (particles.length >= 42) return;
+      particles.push({
+        x: Math.random() * w,
+        y: burst ? (0.45 + Math.random() * 0.52) * h : (0.1 + Math.random() * 0.9) * h,
+        vx: (Math.random() - 0.5) * (burst ? 2.1 : 0.85) * dpr,
+        vy: -(0.45 + Math.random() * (burst ? 2.2 : 1.0)) * dpr,
+        r: (5.5 + Math.random() * (burst ? 11.0 : 7.5)) * dpr,
+        hue: (baseHue + Math.random() * 360) % 360,
+        alpha: 0.68 + Math.random() * 0.25,
+        life: 0,
+        maxLife: 55 + Math.random() * 65,
+        twinkle: Math.random() * Math.PI * 2
+      });
+    }
+
+    function drawUploadBg(now) {
+      const dpr = syncBgSize();
+      const w = bgCanvas.width;
+      const h = bgCanvas.height;
+      bgCtx.clearRect(0, 0, w, h);
+
+      // Automatically relax to calm mode if host stops sending beat frames
+      if (hostPlaying && (Date.now() - lastBeatRx) > 2500) {
+        hostPlaying = false;
+        hostBass = 0;
+        targetBars.fill(0);
+      }
+
+      const baseHue = hostPlaying ? hostHue : ((now * 0.04) % 360);
+      const tgtBass = hostPlaying ? hostBass : (0.06 + 0.03 * Math.sin(now * 0.002));
+      smoothBass += (tgtBass - smoothBass) * 0.25;
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const t = hostPlaying
+          ? targetBars[i]
+          : (0.05 + 0.035 * Math.sin(now * 0.0024 + i * 0.55));
+        smoothBars[i] += (t - smoothBars[i]) * 0.26;
+      }
+
+      const amb = bgCtx.createRadialGradient(
+        w * (0.3 + 0.4 * Math.sin(now * 0.0011)),
+        h * (0.55 + 0.25 * Math.cos(now * 0.0014)),
+        12 * dpr,
+        w * 0.5,
+        h * 0.5,
+        Math.max(w, h) * 0.85
+      );
+      amb.addColorStop(0, 'hsla(' + baseHue + ', 90%, 58%, ' + (0.22 + smoothBass * 0.28).toFixed(3) + ')');
+      amb.addColorStop(0.55, 'hsla(' + ((baseHue + 140) % 360) + ', 90%, 54%, ' + (0.12 + smoothBass * 0.16).toFixed(3) + ')');
+      amb.addColorStop(1, 'rgba(28, 31, 40, 0)');
+      bgCtx.fillStyle = amb;
+      bgCtx.fillRect(0, 0, w, h);
+
+      const gap = Math.max(4 * dpr, w * 0.015);
+      const barW = Math.max(4 * dpr, (w - gap * (BAR_COUNT + 1)) / BAR_COUNT);
+      const maxH = h * 0.65;
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const val = smoothBars[i];
+        if (val <= 0.01) continue;
+        const barH = Math.max(4 * dpr, val * maxH);
+        const x = gap + i * (barW + gap);
+        const y = h - barH;
+        const rad = Math.min(barW * 0.4, 5 * dpr);
+        const hue = (baseHue + i * 16) % 360;
+        const g = bgCtx.createLinearGradient(0, h, 0, y);
+        g.addColorStop(0, 'hsla(' + hue + ', 90%, 56%, 0.22)');
+        g.addColorStop(0.65, 'hsla(' + ((hue + 25) % 360) + ', 94%, 62%, 0.56)');
+        g.addColorStop(1, 'hsla(' + ((hue + 50) % 360) + ', 98%, 72%, 0.88)');
+        bgCtx.fillStyle = g;
+        bgCtx.beginPath();
+        bgCtx.moveTo(x, h);
+        bgCtx.lineTo(x, y + rad);
+        bgCtx.quadraticCurveTo(x, y, x + rad, y);
+        bgCtx.lineTo(x + barW - rad, y);
+        bgCtx.quadraticCurveTo(x + barW, y, x + barW, y + rad);
+        bgCtx.lineTo(x + barW, h);
+        bgCtx.closePath();
+        bgCtx.fill();
+      }
+
+      if (Math.random() < (hostPlaying ? (0.35 + smoothBass * 0.45) : 0.14)) {
+        spawnBigParticle(w, h, dpr, baseHue, false);
+      }
+      if (hostPlaying && smoothBass > 0.3 && (smoothBass - prevBass) > 0.04) {
+        for (let b = 0; b < 4; b++) spawnBigParticle(w, h, dpr, baseHue, true);
+      }
+      prevBass = smoothBass;
+
+      for (let idx = particles.length - 1; idx >= 0; idx--) {
+        const p = particles[idx];
+        p.life++;
+        if (p.life >= p.maxLife || p.y < -40 * dpr) {
+          particles.splice(idx, 1);
+          continue;
+        }
+        const kick = 1 + smoothBass * 1.45;
+        p.x += p.vx * kick + Math.sin(now * 0.004 + p.twinkle) * 0.35 * dpr;
+        p.y += p.vy * kick;
+        const lr = p.life / p.maxLife;
+        const fade = lr < 0.2 ? lr / 0.2 : 1 - (lr - 0.2) / 0.8;
+        const pulse = 0.7 + 0.3 * Math.sin(now * 0.012 + p.twinkle);
+        const alpha = Math.min(1, Math.max(0, p.alpha * fade * pulse));
+        const rad = p.r * (0.85 + smoothBass * 0.55);
+
+        const orb = bgCtx.createRadialGradient(p.x, p.y, rad * 0.1, p.x, p.y, rad * 2.2);
+        orb.addColorStop(0, 'hsla(' + p.hue + ', 100%, 82%, ' + (alpha * 0.85).toFixed(3) + ')');
+        orb.addColorStop(0.45, 'hsla(' + p.hue + ', 96%, 64%, ' + (alpha * 0.42).toFixed(3) + ')');
+        orb.addColorStop(1, 'hsla(' + p.hue + ', 96%, 60%, 0)');
+        bgCtx.fillStyle = orb;
+        bgCtx.beginPath();
+        bgCtx.arc(p.x, p.y, rad * 2.2, 0, Math.PI * 2);
+        bgCtx.fill();
+      }
+
+      requestAnimationFrame(drawUploadBg);
+    }
+    requestAnimationFrame(drawUploadBg);
+
+    // =========================================================================
+    // WEBRTC P2P CONNECTION TO LOCAL SOUNDBOARD HOST (PEERJS)
+    // =========================================================================
+    const connBar = document.getElementById('connBar');
+    const connText = document.getElementById('connText');
+    const fileInput = document.getElementById('fileInput');
+    const queueEl = document.getElementById('queue');
+    const sendBtn = document.getElementById('sendBtn');
+
+    const CHUNK_SIZE = 64 * 1024; // 64KB chunks for rock-solid Android & iOS Safari WebRTC transfer
+    const CHUNK_TIMEOUT_MS = 30000;
+
+    let peer = null;
+    let conn = null;
+    let isConnected = false;
+    let isSending = false;
+    let selectedFiles = [];
+    const pendingAcks = new Map();
+
+    function getHostPeerId() {
+      const hash = window.location.hash || '';
+      const hashMatch = hash.match(/peer=([^&]+)/i);
+      if (hashMatch && hashMatch[1]) return decodeURIComponent(hashMatch[1]).trim();
+      const params = new URLSearchParams(window.location.search);
+      return (params.get('peer') || '').trim();
+    }
+
+    const HOST_PEER_ID = getHostPeerId();
+
+    function setConnUI(state, label) {
+      connBar.className = 'conn-bar' + (state === 'ok' ? ' connected' : (state === 'err' ? ' error retryable' : ''));
+      connText.textContent = label;
+      updateSendBtnState();
+    }
+
+    function updateSendBtnState() {
+      if (isSending) {
+        sendBtn.disabled = true;
+        return;
+      }
+      sendBtn.disabled = !(isConnected && selectedFiles.length > 0);
+    }
+
+    function rejectAllAcks(reason) {
+      pendingAcks.forEach((entry) => {
+        clearTimeout(entry.timer);
+        entry.reject(new Error(reason));
+      });
+      pendingAcks.clear();
+    }
+
+    function connectToHost() {
+      if (!HOST_PEER_ID) {
+        setConnUI('err', 'Scan QR code from Soundboard');
+        return;
+      }
+      if (typeof Peer === 'undefined') {
+        setConnUI('err', 'Offline — Tap to retry');
+        return;
+      }
+
+      isConnected = false;
+      setConnUI('wait', 'Connecting to soundboard...');
+
+      if (peer) {
+        try { peer.destroy(); } catch (e) {}
+        peer = null;
+      }
+
+      peer = new Peer({
+        debug: 0,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' }
+          ]
+        }
+      });
+
+      const connectTimeout = setTimeout(() => {
+        if (!isConnected) {
+          setConnUI('err', 'Host unreachable — Tap to retry');
+        }
+      }, 15000);
+
+      peer.on('open', () => {
+        conn = peer.connect(HOST_PEER_ID, {
+          reliable: true,
+          serialization: 'binary'
+        });
+
+        conn.on('open', () => {
+          clearTimeout(connectTimeout);
+          isConnected = true;
+          setConnUI('ok', 'Connected to Soundboard');
+        });
+
+        conn.on('data', (msg) => {
+          if (!msg || typeof msg !== 'object') return;
+
+          // Live beat sync from host soundboard
+          if (msg.type === 'beat') {
+            lastBeatRx = Date.now();
+            hostPlaying = !!msg.playing;
+            hostBass = Number(msg.bass) || 0;
+            if (typeof msg.hue === 'number') hostHue = msg.hue;
+            if (Array.isArray(msg.bars) && msg.bars.length) {
+              for (let i = 0; i < BAR_COUNT; i++) {
+                targetBars[i] = Number(msg.bars[i % msg.bars.length]) || 0;
+              }
+            } else {
+              targetBars.fill(0);
+            }
+            return;
+          }
+
+          // Chunk save confirmation from host soundboard
+          if (msg.type === 'ack') {
+            const key = msg.id + ':' + msg.chunk;
+            const entry = pendingAcks.get(key);
+            if (entry) {
+              clearTimeout(entry.timer);
+              pendingAcks.delete(key);
+              entry.resolve(msg);
+            }
+          }
+        });
+
+        conn.on('close', () => {
+          clearTimeout(connectTimeout);
+          isConnected = false;
+          rejectAllAcks('Connection closed');
+          setConnUI('err', 'Disconnected — Tap to reconnect');
+        });
+
+        conn.on('error', () => {
+          clearTimeout(connectTimeout);
+          isConnected = false;
+          rejectAllAcks('Connection error');
+          setConnUI('err', 'Connection failed — Tap to retry');
+        });
+      });
+
+      peer.on('error', (err) => {
+        clearTimeout(connectTimeout);
+        isConnected = false;
+        rejectAllAcks('Peer error');
+        const msg = (err && err.type === 'peer-unavailable')
+          ? 'Host offline — Tap to retry'
+          : 'Network error — Tap to retry';
+        setConnUI('err', msg);
+      });
+    }
+
+    connBar.addEventListener('click', () => {
+      if (!isConnected && HOST_PEER_ID) {
+        connectToHost();
+      }
+    });
+
+    connectToHost();
+
+    // =========================================================================
+    // FILE PICKER & P2P CHUNKED STREAMING (iOS SAFARI + ANDROID COMPATIBLE)
+    // =========================================================================
+    function formatSize(bytes) {
+      if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+      if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    }
+
+    function readBlobAsArrayBuffer(blob) {
+      if (typeof blob.arrayBuffer === 'function') {
+        return blob.arrayBuffer();
+      }
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Read failed'));
+        reader.readAsArrayBuffer(blob);
+      });
+    }
+
+    function sendChunkAndWaitAck(payload) {
+      return new Promise((resolve, reject) => {
+        if (!conn || !isConnected) {
+          reject(new Error('Not connected'));
+          return;
+        }
+        const key = payload.id + ':' + payload.chunk;
+        const timer = setTimeout(() => {
+          pendingAcks.delete(key);
+          reject(new Error('Timed out'));
+        }, CHUNK_TIMEOUT_MS);
+
+        pendingAcks.set(key, { resolve, reject, timer });
+
+        try {
+          conn.send(payload);
+        } catch (err) {
+          clearTimeout(timer);
+          pendingAcks.delete(key);
+          reject(err);
+        }
+      });
+    }
+
+    fileInput.addEventListener('change', () => {
+      selectedFiles = Array.prototype.slice.call(fileInput.files || []);
+      renderQueue();
+      sendBtn.textContent = 'Send';
+      updateSendBtnState();
+    });
+
+    function renderQueue() {
+      queueEl.innerHTML = '';
+      queueEl.classList.toggle('has-files', selectedFiles.length > 0);
+      selectedFiles.forEach((f, i) => {
+        const div = document.createElement('div');
+        div.className = 'q-item';
+        div.innerHTML =
+          '<div class="q-top">' +
+            '<span class="q-name"></span>' +
+            '<span class="q-status" id="st-' + i + '">' + formatSize(f.size) + '</span>' +
+          '</div>' +
+          '<div class="bar-bg"><div class="bar-fill" id="bar-' + i + '"></div></div>';
+        div.querySelector('.q-name').textContent = f.name;
+        queueEl.appendChild(div);
+      });
+    }
+
+    async function sendFileP2P(file, index) {
+      const st = document.getElementById('st-' + index);
+      const bar = document.getElementById('bar-' + index);
+
+      const uploadId = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
+      const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+
+      for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+        const start = chunkIdx * CHUNK_SIZE;
+        const end = Math.min(file.size, start + CHUNK_SIZE);
+        const buf = await readBlobAsArrayBuffer(file.slice(start, end));
+
+        let ack = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            ack = await sendChunkAndWaitAck({
+              type: 'chunk',
+              id: uploadId,
+              chunk: chunkIdx,
+              total: totalChunks,
+              offset: start,
+              name: file.name,
+              mime: file.type || '',
+              data: buf
+            });
+            break;
+          } catch (err) {
+            if (attempt >= 2 || !isConnected) {
+              st.textContent = 'Connection lost';
+              st.className = 'q-status err';
+              return;
+            }
+            st.textContent = 'Retrying...';
+            await new Promise((r) => setTimeout(r, 600));
+          }
+        }
+
+        if (!ack || !ack.ok) {
+          st.textContent = (ack && ack.error) ? ack.error : 'Rejected';
+          st.className = 'q-status err';
+          return;
+        }
+
+        const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
+        bar.style.width = pct + '%';
+        st.textContent = pct < 100 ? pct + '%' : 'Sent ✓';
+        if (pct >= 100) st.className = 'q-status ok';
+      }
+    }
+
+    sendBtn.addEventListener('click', async () => {
+      if (!selectedFiles.length || !isConnected || isSending) return;
+      isSending = true;
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending...';
+
+      for (let i = 0; i < selectedFiles.length; i++) {
+        await sendFileP2P(selectedFiles[i], i);
+      }
+
+      isSending = false;
+      sendBtn.textContent = 'Sent ✓';
+      fileInput.value = '';
+      selectedFiles = [];
+      updateSendBtnState();
+    });
+  </script>
+</body>
+</html>
